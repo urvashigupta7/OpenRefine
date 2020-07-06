@@ -28,8 +28,14 @@ package com.google.refine.importing;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Map;
+import java.util.Properties;
 
+import okhttp3.MultipartBody;
+import org.apache.commons.fileupload.RequestContext;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -44,6 +50,10 @@ import com.google.refine.importing.ImportingUtilities;
 import com.google.refine.util.JSONUtilities;
 import com.google.refine.util.ParsingUtilities;
 import com.google.refine.util.TestUtils;
+
+import javax.servlet.http.HttpServletRequest;
+
+import static org.mockito.Mockito.when;
 
 public class ImportingUtilitiesTests extends ImporterTest {
 
@@ -69,6 +79,33 @@ public class ImportingUtilitiesTests extends ImporterTest {
     	File tempDir = TestUtils.createTempDirectory("openrefine-zip-slip-test");
         // For CVE-2018-19859, issue #1840
     	ImportingUtilities.allocateFile(tempDir, "../../tmp/script.sh");
+    }
+
+    @Test
+    public void urlimporting() throws Exception {
+        HttpServletRequest req= Mockito.mock(HttpServletRequest.class);
+        when(req.getContentType()).thenReturn("multipart/form-data; boundary=----WebKitFormBoundarydKSLgWMZE5ktosAg");
+        when(req.getParameter("download")).thenReturn("https://download.data.world/file_download/associatedpress/covid-impact-survey-public-data/COVID_W2_toplines.zip");
+        when(req.getMethod()).thenReturn("POST");
+        when(req.getContentLength()).thenReturn(0);
+        ImportingJob job = ImportingManager.createJob();
+        Properties parameters = ParsingUtilities.parseUrlParameters(req);
+        ObjectNode retrievalRecord = ParsingUtilities.mapper.createObjectNode();
+        final ObjectNode progress = ParsingUtilities.mapper.createObjectNode();
+        ImportingUtilities.retrieveContentFromPostRequest(req,parameters,job.getRawDataDir(),retrievalRecord, new ImportingUtilities.Progress() {
+            @Override
+            public void setProgress(String message, int percent) {
+                if (message != null) {
+                    JSONUtilities.safePut(progress, "message", message);
+                }
+                JSONUtilities.safePut(progress, "percent", percent);
+            }
+
+            @Override
+            public boolean isCanceled() {
+                return job.canceled;
+            }
+        });
     }
     
     private ObjectNode getNestedOptions(ImportingJob job, TreeImportingParserBase parser) {
